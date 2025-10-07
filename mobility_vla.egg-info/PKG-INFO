@@ -1,0 +1,110 @@
+Metadata-Version: 2.4
+Name: mobility-vla
+Version: 0.1.0
+Summary: MobilityVLA reference implementation for multimodal tour-based navigation.
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: accelerate>=1.10.1
+Requires-Dist: bitsandbytes>=0.48.1
+Requires-Dist: numpy>=1.26.0
+Requires-Dist: pycolmap>=3.12.6
+Requires-Dist: transformers>=4.57.0
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+
+# MobilityVLA: Implementation Overview
+
+This repository contains a reference implementation of **MobilityVLA**, a hierarchical navigation policy inspired by the paper *“MobilityVLA: Multimodal Instruction Navigation with Long-Context VLMs and Topological Graphs”*. The system targets the Multimodal Instruction Navigation with Tours (MINT) setting where a robot must satisfy natural-language or multimodal requests after observing a prerecorded demonstration tour.
+
+## Problem Setting (MINT)
+- **Inputs**
+  - Demonstration tour video frames `F = {f_i}` with optional per-frame textual narrations `N = {n_j}`.
+  - Runtime multimodal instruction consisting of text `d` and an optional image observation `I`.
+  - Streaming robot observations `O_t` during navigation.
+- **Output**
+  - Embodiment-agnostic waypoint actions `a_t = (Δx, Δy, Δθ)` that drive the robot toward the instruction-compliant goal.
+
+## MobilityVLA Architecture
+MobilityVLA follows a hierarchical perception-to-action pipeline composed of three stages:
+
+1. **Offline Demonstration Processing**
+   - Extract an ordered set of keyframes from the tour.
+   - Estimate approximate 6-DoF poses for each frame (via a structure-from-motion pipeline such as COLMAP).
+   - Build a topological graph `G = (V, E)` where each vertex corresponds to a tour keyframe and directed edges connect spatially adjacent frames (≤ 2 m and ≤ 90° bearing change).
+   - Encapsulate metadata per vertex: image, narration, pose, landmark descriptors, and precomputed embeddings for retrieval.
+
+2. **High-Level Goal Selection**
+   - Construct a long-context prompt `P(F, N, d, I)` that interleaves tour frames, narrations, and the user instruction.
+   - Query a long-context Vision-Language Model (VLM) to obtain a goal frame index `g`, indicating the vertex most aligned with the instruction semantics.
+   - Provide fallback heuristics (e.g., similarity search over text/image embeddings) when a full VLM is unavailable.
+
+3. **Low-Level Navigation**
+   - Localize the current observation `O_t` against the demonstration-derived map using hierarchical visual localization (global descriptor lookup → local feature matching + PnP pose estimation).
+   - Plan the shortest path on `G` between the localized vertex `v_s` and the goal vertex `v_g`.
+   - Emit a waypoint action pointing toward the next vertex on the path expressed as relative translation/rotation in the robot frame.
+
+## Repository Structure
+- `mobility_vla/`: Python package implementing the core subsystems (graph construction, retrieval, localization, navigation controller).
+- `scripts/`: Utilities and runnable examples that stitch the modules into an end-to-end pipeline with synthetic data.
+- `tests/`: Lightweight unit tests covering the main architectural seams.
+- `docs/`: Design notes, usage instructions, and references.
+
+The implementation emphasizes modularity: each subsystem exposes clean interfaces so that researchers can swap in higher-fidelity components (e.g., a production VLM or SLAM system) without rewriting the entire stack.
+
+## Environment Setup with `uv`
+```bash
+# create a dedicated cache directory to avoid permission issues
+export UV_CACHE_DIR=.uv-cache
+
+# create the project virtual environment
+uv venv .venv
+
+# install runtime dependencies (PyCOLMAP + Transformers stack)
+uv sync
+
+# activate for local development
+source .venv/bin/activate
+```
+
+By default, the `pyproject.toml` includes:
+- `pycolmap` for tour pose estimation and graph building.
+- `transformers` + `accelerate` to drive Qwen3-VL or other Hugging Face VLMs.
+- Optional `dev` extra (`uv pip install -e .[dev]`) which currently adds `pytest`.
+
+## Using Qwen3-VL for Goal Selection
+```python
+from mobility_vla import (
+    DemonstrationTour,
+    Instruction,
+    MobilityVLA,
+    MobilityVLAConfig,
+    Observation,
+    Qwen3VLGoalSelector,
+    TourFrame,
+)
+from mobility_vla.types import Pose
+
+tour = DemonstrationTour(
+    frames=[
+        TourFrame(frame_id="F1", pose=Pose(0.0, 0.0), narrative="Entrance lobby."),
+        TourFrame(frame_id="F2", pose=Pose(2.0, 0.0), narrative="Mail room with return box."),
+    ]
+)
+
+qwen_selector = Qwen3VLGoalSelector.from_pretrained(
+    "Qwen/Qwen2.5-VL-7B-Instruct",
+    device_map="auto",
+    dtype=None,  # let transformers infer a compatible dtype for the available hardware
+)
+
+mobility_vla = MobilityVLA(
+    tour,
+    MobilityVLAConfig(high_level_selector=qwen_selector),
+)
+
+mobility_vla.set_instruction(Instruction(text="Where should I return this package?"))
+result = mobility_vla.step(Observation(hint="entrance"))
+print(result.action)
+```
+
+> **Note:** Downloading Qwen3-VL weights requires adequate GPU/CPU resources. The example above expects the model artefacts to be cached locally or accessible via Hugging Face.
