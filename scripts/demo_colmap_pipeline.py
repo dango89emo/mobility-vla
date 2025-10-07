@@ -132,8 +132,15 @@ def main() -> None:
             f"[Step {idx}] observation_hint='{hint}' "
             f"path={result.path} "
             f"action=(dx={action.dx:.2f}, dy={action.dy:.2f}, dtheta={action.dtheta:.2f}) "
-            f"localized={result.localization.frame_id}"
+            f"localized={result.localization.frame_id} → predicted={result.predicted_frame_id}"
         )
+        if result.command:
+            command = result.command
+            print(
+                "        command="
+                f"(linear_x={command.linear_x:.3f}, linear_y={command.linear_y:.3f}, "
+                f"angular_z={command.angular_z:.3f}, duration={command.duration:.2f}s)"
+            )
 
 
 if __name__ == "__main__":

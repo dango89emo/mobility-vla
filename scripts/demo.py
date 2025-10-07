@@ -52,11 +52,17 @@ def main() -> None:
     for step_idx, observation in enumerate(observations, start=1):
         result = mobility_vla.step(observation)
         action = result.action
+        command = result.command
         print(
             f"Step {step_idx}: path={result.path} "
             f"action=(dx={action.dx:.2f}, dy={action.dy:.2f}, dtheta={action.dtheta:.2f}) "
-            f"(localized to {result.localization.frame_id})"
+            f"(localized to {result.localization.frame_id} → predicted {result.predicted_frame_id})"
         )
+        if command:
+            print(
+                f"           command: lin=({command.linear_x:.2f}, {command.linear_y:.2f}) "
+                f"ang={command.angular_z:.2f} duration={command.duration:.2f}s"
+            )
 
 
 if __name__ == "__main__":
