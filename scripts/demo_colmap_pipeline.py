@@ -1,4 +1,4 @@
-"""Demonstration script that runs MobilityVLA on COLMAP outputs with Qwen3-VL."""
+"""Demonstration script that runs MobilityVLA on COLMAP outputs with Qwen2.5-VL."""
 
 from __future__ import annotations
 
@@ -62,8 +62,8 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--qwen-model",
-        default="Qwen/Qwen3-VL-30B-A3B-Instruct",
-        help="Hugging Face model id for Qwen3-VL (downloaded automatically if missing).",
+        default="Qwen/Qwen2.5-VL-7B-Instruct",
+        help="Hugging Face model id for Qwen2.5-VL (downloaded automatically if missing).",
     )
     parser.add_argument(
         "--device-map",
@@ -72,7 +72,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--torch-dtype",
-        default="auto",
+        default="bfloat16",
         help="Torch dtype for model weights (e.g., float16, bfloat16, float32, auto).",
     )
     parser.add_argument(
